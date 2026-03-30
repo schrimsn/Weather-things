@@ -696,28 +696,32 @@ async function loadWeather(city) {
 async function loadWeatherByCoords(lat, lon) {
   showLoading(true);
   currentLat = lat; currentLon = lon;
-  try {
-    const u = units;
-    const [current, forecast, air] = await Promise.all([
-      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=${u}&appid=${API_KEY}`).then(r=>r.json()),
-      fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=${u}&appid=${API_KEY}`).then(r=>r.json()),
-      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${API_KEY}`).then(r=>r.json()),
-    ]);
+  const u = units;
 
-    // One More call: One Call for UV / hourly / daily
-    let oneCall = null;
-    try {
-      oneCall = await fetch(`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&units=${u}&exclude=minutely,alerts&appid=${API_KEY}`).then(r=>r.json());
-    } catch {}
+  const safeFetch = url =>
+    fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
 
-    renderWeather(current, forecast, air, oneCall);
-    showLoading(false);
-    updateTimestamp();
-    document.getElementById('search-input').value = '';
-  } catch(e) {
-    showLoading(false);
-    console.error('Weather load error:', e);
+  const base = 'https://api.openweathermap.org';
+  const [current, forecast, air, oneCall] = await Promise.all([
+    safeFetch(base + '/data/2.5/weather?lat=' + lat + '&lon=' + lon + '&units=' + u + '&appid=' + API_KEY),
+    safeFetch(base + '/data/2.5/forecast?lat=' + lat + '&lon=' + lon + '&units=' + u + '&appid=' + API_KEY),
+    safeFetch(base + '/data/2.5/air_pollution?lat=' + lat + '&lon=' + lon + '&appid=' + API_KEY),
+    safeFetch(base + '/data/3.0/onecall?lat=' + lat + '&lon=' + lon + '&units=' + u + '&exclude=minutely,alerts&appid=' + API_KEY),
+  ]);
+
+  showLoading(false);
+
+  if (!current || !forecast) {
+    document.getElementById('weather-content').innerHTML =
+      '<div class="state-overlay"><div class="state-msg" style="color:#f87171">Could not load weather data. Make sure your API key is active on OpenWeatherMap.</div></div>';
+    document.getElementById('weather-content').classList.remove('hidden');
+    console.error('Core fetch failed', { current, forecast });
+    return;
   }
+
+  renderWeather(current, forecast, air, oneCall);
+  updateTimestamp();
+  document.getElementById('search-input').value = '';
 }
 
 // ═══════════════════════════════════════════════
