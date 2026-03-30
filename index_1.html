@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Atmosphere — Weather Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Mono:wght@400;700&family=Syne:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080c12;
+    --surface:   #0e1520;
+    --card:      #121c2b;
+    --border:    rgba(100,160,255,0.1);
+    --accent:    #4d9fff;
+    --accent2:   #f97316;
+    --muted:     #4a6080;
+    --text:      #d0e4ff;
+    --text-dim:  #6a88aa;
+    --glow:      rgba(77,159,255,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Atmospheric background ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 10%, rgba(30,70,140,0.25) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(10,40,90,0.2) 0%, transparent 55%);
+    pointer-events: none;
+  }
+
+  /* noise grain */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 1;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  #app { position: relative; z-index: 2; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.5rem 2.5rem;
+    border-bottom: 1px solid var(--border);
+    background: rgba(8,12,18,0.6);
+    backdrop-filter: blur(12px);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.6rem;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+  }
+  .logo span { color: var(--text-dim); font-style: italic; }
+
+  .search-bar {
+    display: flex; gap: 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    padding: 0.4rem 0.4rem 0.4rem 1.2rem;
+    align-items: center;
+    transition: border-color 0.2s;
+  }
+  .search-bar:focus-within { border-color: var(--accent); }
+
+  .search-bar input {
+    background: transparent; border: none; outline: none;
+    color: var(--text); font-family: 'Syne', sans-serif; font-size: 0.9rem;
+    width: 200px;
+  }
+
+  .search-bar button {
+    background: var(--accent); border: none; border-radius: 22px;
+    color: #000; padding: 0.45rem 1rem;
+    font-family: 'Syne', sans-serif; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s;
+  }
+  .search-bar button:hover { opacity: 0.85; }
+
+  .header-right { display: flex; align-items: center; gap: 1rem; }
+
+  .unit-toggle {
+    display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden;
+  }
+  .unit-toggle button {
+    background: none; border: none; color: var(--text-dim); padding: 0.35rem 0.75rem;
+    font-family: 'Space Mono', monospace; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;
+  }
+  .unit-toggle button.active { background: var(--accent); color: #000; }
+
+  /* ── Main grid ── */
+  main { padding: 2rem 2.5rem; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Hero current conditions ── */
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2rem;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(100,160,255,0.25); }
+
+  .card-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .card-label::before {
+    content: '';
+    display: inline-block; width: 6px; height: 6px;
+    background: var(--accent); border-radius: 50%;
+  }
+
+  .current-main {
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+
+  .city-name {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2.5rem;
+    line-height: 1;
+    margin-bottom: 0.35rem;
+  }
+
+  .city-country {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+
+  .weather-desc {
+    font-size: 1rem;
+    color: var(--text-dim);
+    text-transform: capitalize;
+    margin-bottom: 1.5rem;
+  }
+
+  .temp-display {
+    font-family: 'Space Mono', monospace;
+    font-size: 5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow: 0 0 40px rgba(77,159,255,0.35);
+  }
+
+  .temp-display .unit-sym {
+    font-size: 2rem;
+    vertical-align: super;
+    color: var(--text-dim);
+  }
+
+  .weather-icon { font-size: 4.5rem; line-height: 1; }
+
+  .detail-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 1rem; margin-top: 1.5rem;
+  }
+
+  .detail-item { }
+  .detail-item .d-label { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.25rem; }
+  .detail-item .d-value { font-family: 'Space Mono', monospace; font-size: 1rem; color: var(--text); }
+
+  /* ── Air Quality ── */
+  .aqi-bar-wrap { margin-top: 1rem; }
+  .aqi-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #22c55e, #eab308, #f97316, #ef4444, #7c3aed);
+    position: relative; margin-bottom: 0.4rem;
+  }
+  .aqi-needle {
+    position: absolute; top: -4px;
+    width: 16px; height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 6px rgba(0,0,0,0.4);
+    transition: left 0.8s ease;
+  }
+  .aqi-labels { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-dim); }
+
+  .aqi-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+  .aqi-cat { font-size: 0.85rem; color: var(--text-dim); }
+
+  /* ── Forecast row ── */
+  .forecast-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .forecast-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem;
+    text-align: center;
+    transition: border-color 0.2s, transform 0.2s;
+    cursor: default;
+  }
+  .forecast-card:hover { border-color: rgba(100,160,255,0.3); transform: translateY(-3px); }
+  .forecast-card.today { border-color: var(--accent); background: rgba(77,159,255,0.06); }
+
+  .fc-day { font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.75rem; }
+  .fc-icon { font-size: 2rem; margin-bottom: 0.75rem; }
+  .fc-hi { font-family: 'Space Mono', monospace; font-size: 1.1rem; color: var(--text); }
+  .fc-lo { font-family: 'Space Mono', monospace; font-size: 0.85rem; color: var(--text-dim); }
+  .fc-desc { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.5rem; text-transform: capitalize; }
+  .fc-rain { font-size: 0.7rem; color: #60a5fa; margin-top: 0.3rem; }
+
+  /* ── Hourly ── */
+  .hourly-scroll {
+    display: flex; gap: 0.75rem;
+    overflow-x: auto; padding-bottom: 0.5rem;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+
+  .hr-card {
+    flex: 0 0 80px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem 0.5rem;
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+  .hr-card:hover { border-color: rgba(100,160,255,0.25); }
+  .hr-time { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.5rem; }
+  .hr-icon { font-size: 1.3rem; margin-bottom: 0.5rem; }
+  .hr-temp { font-family: 'Space Mono', monospace; font-size: 0.85rem; }
+  .hr-pop  { font-size: 0.65rem; color: #60a5fa; margin-top: 0.25rem; }
+
+  /* ── Bottom grid ── */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  /* Wind */
+  .wind-compass-wrap { display: flex; justify-content: center; margin: 1rem 0; }
+  .compass {
+    width: 120px; height: 120px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .compass-labels span {
+    position: absolute; font-size: 0.65rem; color: var(--text-dim);
+    font-family: 'Space Mono', monospace;
+  }
+  .compass-labels .n { top: 6px; left: 50%; transform: translateX(-50%); }
+  .compass-labels .s { bottom: 6px; left: 50%; transform: translateX(-50%); }
+  .compass-labels .e { right: 6px; top: 50%; transform: translateY(-50%); }
+  .compass-labels .w { left: 6px; top: 50%; transform: translateY(-50%); }
+
+  .wind-arrow {
+    width: 3px; height: 50px;
+    background: linear-gradient(to bottom, var(--accent), transparent);
+    position: absolute; bottom: 50%; left: 50%;
+    transform-origin: bottom center;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    transition: transform 0.8s ease;
+  }
+
+  .wind-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+
+  .wind-stats { display: flex; justify-content: space-around; margin-top: 0.5rem; }
+  .wind-stat .d-label { font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.2rem; }
+  .wind-stat .d-value { font-family: 'Space Mono', monospace; font-size: 0.9rem; }
+
+  /* Sun times */
+  .sun-arc-wrap { display: flex; justify-content: center; padding: 1rem 0; }
+  .sun-arc-svg { width: 100%; max-width: 200px; }
+
+  .sun-times { display: flex; justify-content: space-between; margin-top: 0.5rem; }
+  .sun-time .d-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.08em; }
+  .sun-time .d-value { font-family: 'Space Mono', monospace; font-size: 1rem; }
+
+  /* Humidity / Feels like */
+  .gauge-wrap { display: flex; justify-content: center; margin: 1rem 0; }
+  .big-stat { text-align: center; margin: 1.5rem 0; }
+  .big-stat .big-num { font-family: 'Space Mono', monospace; font-size: 3.5rem; color: var(--accent); }
+  .big-stat .big-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin-top: 0.25rem; }
+
+  .mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .mini-stat { background: var(--surface); border-radius: 12px; padding: 0.85rem; }
+  .mini-stat .d-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 0.25rem; }
+  .mini-stat .d-value { font-family: 'Space Mono', monospace; font-size: 1rem; }
+
+  /* ── Hourly temp chart ── */
+  .chart-card { margin-bottom: 1.5rem; }
+  .chart-container { width: 100%; height: 160px; position: relative; margin-top: 1rem; }
+
+  /* ── Loading & error states ── */
+  .state-overlay {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 50vh; gap: 1rem;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .state-msg { color: var(--text-dim); font-size: 0.9rem; }
+
+  .loc-btn {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text-dim); padding: 0.5rem 1rem;
+    font-family: 'Syne', sans-serif; font-size: 0.8rem; cursor: pointer;
+    transition: all 0.2s; margin-top: 0.5rem;
+  }
+  .loc-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .fade-in { animation: fadeUp 0.45s ease both; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; }
+    .forecast-row { grid-template-columns: repeat(3, 1fr); }
+    .bottom-grid { grid-template-columns: 1fr 1fr; }
+    header { padding: 1rem 1.5rem; }
+    main { padding: 1.5rem; }
+    .search-bar input { width: 140px; }
+  }
+
+  @media (max-width: 600px) {
+    .forecast-row { grid-template-columns: repeat(2, 1fr); }
+    .bottom-grid { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: repeat(2, 1fr); }
+    .hero { gap: 1rem; }
+    .logo { font-size: 1.2rem; }
+    main { padding: 1rem; }
+  }
+
+  .hidden { display: none !important; }
+  .update-time { font-size: 0.7rem; color: var(--text-dim); font-family: 'Space Mono', monospace; }
+</style>
+</head>
+<body>
+<div id="app">
+
+
+
+  <!-- ===== MAIN DASHBOARD ===== -->
+  <div id="dashboard" class="hidden">
+
+    <header>
+      <div class="logo">Atmos<span>phere</span></div>
+
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search city…" onkeydown="if(event.key==='Enter') searchCity()"/>
+        <button onclick="searchCity()">Go</button>
+      </div>
+
+      <div class="header-right">
+        <div class="unit-toggle">
+          <button id="btn-f" class="active" onclick="setUnits('imperial')">°F</button>
+          <button id="btn-c" onclick="setUnits('metric')">°C</button>
+        </div>
+        <span class="update-time" id="update-time"></span>
+        <button class="loc-btn" onclick="getLocation()">📍 My Location</button>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <!-- Loading state -->
+      <div id="loading-state" class="state-overlay">
+        <div class="spinner"></div>
+        <div class="state-msg">Fetching atmospheric data…</div>
+      </div>
+
+      <!-- Weather content -->
+      <div id="weather-content" class="hidden">
+
+        <!-- HERO ROW -->
+        <div class="hero">
+
+          <!-- Current Conditions -->
+          <div class="card fade-in">
+            <div class="card-label">Current Conditions</div>
+            <div class="current-main">
+              <div>
+                <div class="city-name" id="city-name">—</div>
+                <div class="city-country" id="city-country">—</div>
+                <div class="weather-desc" id="weather-desc">—</div>
+                <div class="temp-display" id="temp-display">—<span class="unit-sym" id="unit-sym">°F</span></div>
+              </div>
+              <div class="weather-icon" id="weather-icon">🌤️</div>
+            </div>
+
+            <div class="detail-grid">
+              <div class="detail-item">
+                <div class="d-label">Feels Like</div>
+                <div class="d-value" id="feels-like">—</div>
+              </div>
+              <div class="detail-item">
+                <div class="d-label">Humidity</div>
+                <div class="d-value" id="humidity">—</div>
+              </div>
+              <div class="detail-item">
+                <div class="d-label">Pressure</div>
+                <div class="d-value" id="pressure">—</div>
+              </div>
+              <div class="detail-item">
+                <div class="d-label">Visibility</div>
+                <div class="d-value" id="visibility">—</div>
+              </div>
+              <div class="detail-item">
+                <div class="d-label">Dew Point</div>
+                <div class="d-value" id="dew-point">—</div>
+              </div>
+              <div class="detail-item">
+                <div class="d-label">UV Index</div>
+                <div class="d-value" id="uv-index">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Air Quality -->
+          <div class="card fade-in" style="animation-delay:0.1s">
+            <div class="card-label">Air Quality Index</div>
+            <div class="big-stat">
+              <div class="big-num" id="aqi-value">—</div>
+              <div class="big-label" id="aqi-cat">Loading…</div>
+            </div>
+            <div class="aqi-bar-wrap">
+              <div class="aqi-bar">
+                <div class="aqi-needle" id="aqi-needle" style="left:0%"></div>
+              </div>
+              <div class="aqi-labels">
+                <span>Good</span><span>Moderate</span><span>Sensitive</span><span>Unhealthy</span><span>Hazardous</span>
+              </div>
+            </div>
+            <div style="margin-top:1.5rem;">
+              <div class="card-label">Pollutants (μg/m³)</div>
+              <div class="mini-stats" id="pollutants">
+                <div class="mini-stat"><div class="d-label">PM2.5</div><div class="d-value" id="pm25">—</div></div>
+                <div class="mini-stat"><div class="d-label">PM10</div><div class="d-value" id="pm10">—</div></div>
+                <div class="mini-stat"><div class="d-label">O₃</div><div class="d-value" id="o3">—</div></div>
+                <div class="mini-stat"><div class="d-label">NO₂</div><div class="d-value" id="no2">—</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5-DAY FORECAST -->
+        <div class="card chart-card fade-in" style="animation-delay:0.15s; margin-bottom:1.5rem;">
+          <div class="card-label">5-Day Forecast</div>
+          <div class="forecast-row" id="forecast-row" style="margin-top:1rem;"></div>
+        </div>
+
+        <!-- HOURLY FORECAST -->
+        <div class="card chart-card fade-in" style="animation-delay:0.2s; margin-bottom:1.5rem;">
+          <div class="card-label">24-Hour Temperature Trend</div>
+          <canvas id="temp-chart" height="140" style="margin-top:1rem;"></canvas>
+        </div>
+
+        <!-- HOURLY SCROLL -->
+        <div class="card fade-in" style="animation-delay:0.22s; margin-bottom:1.5rem;">
+          <div class="card-label">Hourly Conditions</div>
+          <div class="hourly-scroll" id="hourly-scroll" style="margin-top:1rem;"></div>
+        </div>
+
+        <!-- BOTTOM GRID -->
+        <div class="bottom-grid">
+
+          <!-- Wind -->
+          <div class="card fade-in" style="animation-delay:0.25s;">
+            <div class="card-label">Wind</div>
+            <div class="wind-compass-wrap">
+              <div class="compass">
+                <div class="compass-labels">
+                  <span class="n">N</span><span class="s">S</span>
+                  <span class="e">E</span><span class="w">W</span>
+                </div>
+                <div class="wind-arrow" id="wind-arrow"></div>
+                <div class="wind-dot"></div>
+              </div>
+            </div>
+            <div class="wind-stats">
+              <div class="wind-stat">
+                <div class="d-label">Speed</div>
+                <div class="d-value" id="wind-speed">—</div>
+              </div>
+              <div class="wind-stat">
+                <div class="d-label">Direction</div>
+                <div class="d-value" id="wind-dir">—</div>
+              </div>
+              <div class="wind-stat">
+                <div class="d-label">Gusts</div>
+                <div class="d-value" id="wind-gust">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sun / Moon -->
+          <div class="card fade-in" style="animation-delay:0.3s;">
+            <div class="card-label">Sun & Daylight</div>
+            <div class="sun-arc-wrap">
+              <svg class="sun-arc-svg" viewBox="0 0 200 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 100 Q100 -10 190 100" stroke="rgba(100,160,255,0.15)" stroke-width="2" fill="none"/>
+                <path id="sun-arc-path" d="M10 100 Q100 -10 190 100" stroke="var(--accent)" stroke-width="2" fill="none"
+                      stroke-dasharray="320" stroke-dashoffset="320" style="transition:stroke-dashoffset 1s ease"/>
+                <circle id="sun-dot" cx="10" cy="100" r="7" fill="#fbbf24" filter="url(#glow)"/>
+                <defs>
+                  <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+              </svg>
+            </div>
+            <div class="sun-times">
+              <div class="sun-time">
+                <div class="d-label">🌅 Sunrise</div>
+                <div class="d-value" id="sunrise">—</div>
+              </div>
+              <div class="sun-time" style="text-align:right;">
+                <div class="d-label">🌇 Sunset</div>
+                <div class="d-value" id="sunset">—</div>
+              </div>
+            </div>
+            <div style="margin-top:1rem;">
+              <div class="d-label">Daylight Duration</div>
+              <div class="d-value" id="daylight" style="font-family:'Space Mono',monospace; margin-top:0.25rem;">—</div>
+            </div>
+          </div>
+
+          <!-- Comfort -->
+          <div class="card fade-in" style="animation-delay:0.35s;">
+            <div class="card-label">Comfort & Atmosphere</div>
+            <div class="mini-stats" style="grid-template-columns:1fr 1fr; margin-top:1rem;">
+              <div class="mini-stat">
+                <div class="d-label">Feels Like</div>
+                <div class="d-value" id="feels-like-2">—</div>
+              </div>
+              <div class="mini-stat">
+                <div class="d-label">Humidity</div>
+                <div class="d-value" id="humidity-2">—</div>
+              </div>
+              <div class="mini-stat">
+                <div class="d-label">Clouds</div>
+                <div class="d-value" id="clouds">—</div>
+              </div>
+              <div class="mini-stat">
+                <div class="d-label">UV Index</div>
+                <div class="d-value" id="uv-index-2">—</div>
+              </div>
+              <div class="mini-stat">
+                <div class="d-label">Dew Point</div>
+                <div class="d-value" id="dew-point-2">—</div>
+              </div>
+              <div class="mini-stat">
+                <div class="d-label">Pressure</div>
+                <div class="d-value" id="pressure-2">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /weather-content -->
+    </main>
+  </div><!-- /dashboard -->
+
+</div><!-- /app -->
+
+<script>
+// ═══════════════════════════════════════════════
+//  CONFIG & STATE
+// ═══════════════════════════════════════════════
+let API_KEY = '';
+let units = 'imperial';
+let currentLat = null, currentLon = null;
+let tempChart = null;
+
+const WEATHER_ICONS = {
+  '01d':'☀️','01n':'🌙','02d':'⛅','02n':'🌙',
+  '03d':'☁️','03n':'☁️','04d':'☁️','04n':'☁️',
+  '09d':'🌧️','09n':'🌧️','10d':'🌦️','10n':'🌧️',
+  '11d':'⛈️','11n':'⛈️','13d':'❄️','13n':'❄️',
+  '50d':'🌫️','50n':'🌫️'
+};
+
+const AQI_CATS = ['','Good','Fair','Moderate','Poor','Very Poor'];
+const AQI_COLORS = ['','#22c55e','#a3e635','#eab308','#f97316','#ef4444'];
+
+// ═══════════════════════════════════════════════
+//  SETUP / KEY MANAGEMENT
+// ═══════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  API_KEY = '4e06ccb30489e90b27aa9fcbd783d6e1';
+  const storedCity = localStorage.getItem('atmos_city') || 'Miami';
+  const storedUnits = localStorage.getItem('atmos_units') || 'imperial';
+  units = storedUnits;
+  updateUnitButtons();
+  showDashboard();
+  loadWeather(storedCity);
+});
+
+function showDashboard() {
+  document.getElementById('dashboard').classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════
+//  SEARCH & LOCATION
+// ═══════════════════════════════════════════════
+function searchCity() {
+  const q = document.getElementById('search-input').value.trim();
+  if (q) loadWeather(q);
+}
+
+function getLocation() {
+  if (!navigator.geolocation) return alert('Geolocation not supported.');
+  navigator.geolocation.getCurrentPosition(pos => {
+    loadWeatherByCoords(pos.coords.latitude, pos.coords.longitude);
+  }, () => alert('Location access denied.'));
+}
+
+function setUnits(u) {
+  units = u;
+  localStorage.setItem('atmos_units', u);
+  updateUnitButtons();
+  if (currentLat) loadWeatherByCoords(currentLat, currentLon);
+}
+
+function updateUnitButtons() {
+  document.getElementById('btn-f').classList.toggle('active', units === 'imperial');
+  document.getElementById('btn-c').classList.toggle('active', units === 'metric');
+}
+
+// ═══════════════════════════════════════════════
+//  DATA FETCHING
+// ═══════════════════════════════════════════════
+async function loadWeather(city) {
+  showLoading(true);
+  try {
+    // Step 1: get coords
+    const geo = await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${API_KEY}`).then(r => r.json());
+    if (!geo.length) throw new Error('City not found');
+    const { lat, lon } = geo[0];
+    loadWeatherByCoords(lat, lon);
+  } catch(e) {
+    showLoading(false);
+    alert('City not found. Please try again.');
+  }
+}
+
+async function loadWeatherByCoords(lat, lon) {
+  showLoading(true);
+  currentLat = lat; currentLon = lon;
+  try {
+    const u = units;
+    const [current, forecast, air] = await Promise.all([
+      fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=${u}&appid=${API_KEY}`).then(r=>r.json()),
+      fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=${u}&appid=${API_KEY}`).then(r=>r.json()),
+      fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${API_KEY}`).then(r=>r.json()),
+    ]);
+
+    // One More call: One Call for UV / hourly / daily
+    let oneCall = null;
+    try {
+      oneCall = await fetch(`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&units=${u}&exclude=minutely,alerts&appid=${API_KEY}`).then(r=>r.json());
+    } catch {}
+
+    renderWeather(current, forecast, air, oneCall);
+    showLoading(false);
+    updateTimestamp();
+    document.getElementById('search-input').value = '';
+  } catch(e) {
+    showLoading(false);
+    alert('Failed to load weather data. Check your API key.');
+    console.error(e);
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════
+function renderWeather(current, forecast, air, oneCall) {
+  const sym = units === 'imperial' ? '°F' : '°C';
+  const speedUnit = units === 'imperial' ? 'mph' : 'm/s';
+
+  // ── Current ──
+  document.getElementById('city-name').textContent = current.name;
+  document.getElementById('city-country').textContent = `${current.sys.country} · ${current.coord.lat.toFixed(2)}°, ${current.coord.lon.toFixed(2)}°`;
+  document.getElementById('weather-desc').textContent = current.weather[0].description;
+  document.getElementById('temp-display').innerHTML = `${Math.round(current.main.temp)}<span class="unit-sym">${sym}</span>`;
+  document.getElementById('unit-sym').textContent = sym;
+  document.getElementById('weather-icon').textContent = WEATHER_ICONS[current.weather[0].icon] || '🌤️';
+
+  document.getElementById('feels-like').textContent = `${Math.round(current.main.feels_like)}${sym}`;
+  document.getElementById('feels-like-2').textContent = `${Math.round(current.main.feels_like)}${sym}`;
+  document.getElementById('humidity').textContent = `${current.main.humidity}%`;
+  document.getElementById('humidity-2').textContent = `${current.main.humidity}%`;
+  document.getElementById('pressure').textContent = `${current.main.pressure} hPa`;
+  document.getElementById('pressure-2').textContent = `${current.main.pressure} hPa`;
+  document.getElementById('visibility').textContent = current.visibility ? `${(current.visibility/1000).toFixed(1)} km` : 'N/A';
+  document.getElementById('clouds').textContent = `${current.clouds.all}%`;
+
+  // Dew point (approx from Magnus formula)
+  const T = units === 'imperial' ? (current.main.temp - 32) * 5/9 : current.main.temp;
+  const H = current.main.humidity;
+  const dp = T - ((100-H)/5);
+  const dpDisplay = units === 'imperial' ? Math.round(dp*9/5+32) : Math.round(dp);
+  document.getElementById('dew-point').textContent = `${dpDisplay}${sym}`;
+  document.getElementById('dew-point-2').textContent = `${dpDisplay}${sym}`;
+
+  // UV (from oneCall if available)
+  const uv = oneCall?.current?.uvi ?? '—';
+  document.getElementById('uv-index').textContent = uv !== '—' ? `${uv} ${uvCategory(uv)}` : 'N/A';
+  document.getElementById('uv-index-2').textContent = uv !== '—' ? uv : 'N/A';
+
+  // ── Wind ──
+  document.getElementById('wind-speed').textContent = `${Math.round(current.wind.speed)} ${speedUnit}`;
+  document.getElementById('wind-dir').textContent = degToCompass(current.wind.deg || 0);
+  document.getElementById('wind-gust').textContent = current.wind.gust ? `${Math.round(current.wind.gust)} ${speedUnit}` : 'N/A';
+  // Arrow: wind.deg = direction wind comes FROM; we point arrow toward that direction
+  const arrowDeg = (current.wind.deg || 0) + 180;
+  document.getElementById('wind-arrow').style.transform = `translateX(-50%) rotate(${arrowDeg}deg)`;
+
+  // ── Sun times ──
+  const tz = current.timezone;
+  document.getElementById('sunrise').textContent = fmtTime(current.sys.sunrise, tz);
+  document.getElementById('sunset').textContent = fmtTime(current.sys.sunset, tz);
+  const dlSecs = current.sys.sunset - current.sys.sunrise;
+  document.getElementById('daylight').textContent = `${Math.floor(dlSecs/3600)}h ${Math.floor((dlSecs%3600)/60)}m`;
+  animateSunArc(current.sys.sunrise, current.sys.sunset, tz);
+
+  // ── Air Quality ──
+  const aqiVal = air?.list?.[0]?.main?.aqi || 1;
+  const comp = air?.list?.[0]?.components || {};
+  document.getElementById('aqi-value').textContent = aqiVal;
+  document.getElementById('aqi-cat').textContent = AQI_CATS[aqiVal] || 'Unknown';
+  document.getElementById('aqi-value').style.color = AQI_COLORS[aqiVal] || 'var(--accent)';
+  document.getElementById('aqi-needle').style.left = `${((aqiVal-1)/4)*100}%`;
+  document.getElementById('pm25').textContent = comp.pm2_5?.toFixed(1) ?? '—';
+  document.getElementById('pm10').textContent = comp.pm10?.toFixed(1) ?? '—';
+  document.getElementById('o3').textContent = comp.o3?.toFixed(1) ?? '—';
+  document.getElementById('no2').textContent = comp.no2?.toFixed(1) ?? '—';
+
+  // ── 5-Day Forecast ──
+  render5Day(forecast, sym);
+
+  // ── Hourly ──
+  const hourlyData = oneCall?.hourly || buildHourlyFromForecast(forecast);
+  renderHourly(hourlyData, sym);
+  renderTempChart(hourlyData, sym);
+}
+
+// ── 5-Day from 3h forecast ──
+function render5Day(forecast, sym) {
+  const days = {};
+  forecast.list.forEach(item => {
+    const d = new Date(item.dt * 1000);
+    const key = d.toDateString();
+    if (!days[key]) days[key] = { temps:[], icons:[], descs:[], pops:[], date: d };
+    days[key].temps.push(item.main.temp);
+    days[key].icons.push(item.weather[0].icon);
+    days[key].descs.push(item.weather[0].description);
+    days[key].pops.push((item.pop||0)*100);
+  });
+
+  const keys = Object.keys(days).slice(0,5);
+  const todayStr = new Date().toDateString();
+
+  document.getElementById('forecast-row').innerHTML = keys.map((k,i) => {
+    const d = days[k];
+    const hi = Math.round(Math.max(...d.temps));
+    const lo = Math.round(Math.min(...d.temps));
+    const icon = WEATHER_ICONS[d.icons[Math.floor(d.icons.length/2)]] || '🌤️';
+    const desc = d.descs[Math.floor(d.descs.length/2)];
+    const pop = Math.round(Math.max(...d.pops));
+    const isToday = k === todayStr;
+    const dayName = isToday ? 'Today' : d.date.toLocaleDateString('en',{weekday:'short'});
+    return `<div class="forecast-card${isToday?' today':''}">
+      <div class="fc-day">${dayName}</div>
+      <div class="fc-icon">${icon}</div>
+      <div class="fc-hi">${hi}${sym}</div>
+      <div class="fc-lo">${lo}${sym}</div>
+      <div class="fc-desc">${desc}</div>
+      ${pop>5?`<div class="fc-rain">💧 ${pop}%</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── Hourly scroll ──
+function renderHourly(hourly, sym) {
+  const items = hourly.slice(0, 24);
+  document.getElementById('hourly-scroll').innerHTML = items.map(h => {
+    const t = new Date((h.dt||h.dt_txt) * (typeof h.dt === 'number' ? 1000 : 1));
+    const icon = WEATHER_ICONS[h.weather?.[0]?.icon || '01d'] || '🌤️';
+    const pop = h.pop ? Math.round(h.pop*100) : 0;
+    const time = t.toLocaleTimeString('en',{hour:'numeric',hour12:true});
+    return `<div class="hr-card">
+      <div class="hr-time">${time}</div>
+      <div class="hr-icon">${icon}</div>
+      <div class="hr-temp">${Math.round(h.main?.temp ?? h.temp)}${sym}</div>
+      ${pop>5?`<div class="hr-pop">💧${pop}%</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function buildHourlyFromForecast(forecast) {
+  return forecast.list.slice(0, 24);
+}
+
+// ── Temperature chart ──
+function renderTempChart(hourly, sym) {
+  const canvas = document.getElementById('temp-chart');
+  const ctx = canvas.getContext('2d');
+  if (tempChart) { tempChart.destroy(); tempChart = null; }
+
+  const items = hourly.slice(0, 24);
+  const labels = items.map(h => {
+    const t = new Date((h.dt) * 1000);
+    return t.toLocaleTimeString('en',{hour:'numeric',hour12:true});
+  });
+  const temps = items.map(h => Math.round(h.main?.temp ?? h.temp));
+  const pops  = items.map(h => Math.round((h.pop||0)*100));
+
+  const style = getComputedStyle(document.documentElement);
+  const accent = '#4d9fff';
+
+  // Use Chart.js from CDN
+  if (typeof Chart === 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+    script.onload = () => drawChart(ctx, labels, temps, pops, sym, accent);
+    document.head.appendChild(script);
+  } else {
+    drawChart(ctx, labels, temps, pops, sym, accent);
+  }
+}
+
+function drawChart(ctx, labels, temps, pops, sym, accent) {
+  tempChart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'line',
+          label: `Temp (${sym})`,
+          data: temps,
+          borderColor: accent,
+          backgroundColor: 'rgba(77,159,255,0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 3,
+          pointBackgroundColor: accent,
+          yAxisID: 'y',
+        },
+        {
+          type: 'bar',
+          label: 'Precip %',
+          data: pops,
+          backgroundColor: 'rgba(96,165,250,0.25)',
+          borderColor: 'rgba(96,165,250,0.5)',
+          borderWidth: 1,
+          yAxisID: 'y1',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: '#6a88aa', font: { family: 'Space Mono', size: 10 } }
+        },
+        tooltip: {
+          backgroundColor: '#121c2b',
+          borderColor: 'rgba(100,160,255,0.2)',
+          borderWidth: 1,
+          titleColor: '#d0e4ff',
+          bodyColor: '#6a88aa',
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#4a6080', font: { family: 'Space Mono', size: 9 }, maxTicksLimit: 12 }, grid: { color: 'rgba(100,160,255,0.05)' } },
+        y: { ticks: { color: '#4a6080', font: { family: 'Space Mono', size: 9 }, callback: v => v + sym }, grid: { color: 'rgba(100,160,255,0.07)' } },
+        y1: { position: 'right', min: 0, max: 100, ticks: { color: '#4a6080', font: { size: 9 }, callback: v => v + '%' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════
+function degToCompass(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg/22.5) % 16];
+}
+
+function fmtTime(unix, tz) {
+  // Use local time (tz offset from current data)
+  return new Date(unix * 1000).toLocaleTimeString('en', {hour:'2-digit', minute:'2-digit'});
+}
+
+function uvCategory(uv) {
+  if (uv <= 2) return '(Low)';
+  if (uv <= 5) return '(Moderate)';
+  if (uv <= 7) return '(High)';
+  if (uv <= 10) return '(Very High)';
+  return '(Extreme)';
+}
+
+function animateSunArc(sunrise, sunset, tz) {
+  const now = Date.now() / 1000;
+  const total = sunset - sunrise;
+  const elapsed = Math.max(0, Math.min(now - sunrise, total));
+  const pct = elapsed / total;
+
+  // Dashoffset animation
+  const pathLen = 320;
+  const offset = pathLen * (1 - pct);
+  document.getElementById('sun-arc-path').style.strokeDashoffset = offset;
+
+  // Move sun dot along quadratic bezier
+  const t = pct;
+  const p0 = {x:10, y:100}, p1 = {x:100, y:-10}, p2 = {x:190, y:100};
+  const x = (1-t)**2*p0.x + 2*(1-t)*t*p1.x + t**2*p2.x;
+  const y = (1-t)**2*p0.y + 2*(1-t)*t*p1.y + t**2*p2.y;
+  const dot = document.getElementById('sun-dot');
+  dot.setAttribute('cx', x);
+  dot.setAttribute('cy', y);
+}
+
+function showLoading(show) {
+  document.getElementById('loading-state').classList.toggle('hidden', !show);
+  document.getElementById('weather-content').classList.toggle('hidden', show);
+}
+
+function updateTimestamp() {
+  document.getElementById('update-time').textContent = 'Updated ' + new Date().toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit'});
+}
+</script>
+</body>
+</html>
