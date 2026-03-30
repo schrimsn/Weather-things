@@ -689,7 +689,7 @@ async function loadWeather(city) {
     loadWeatherByCoords(lat, lon);
   } catch(e) {
     showLoading(false);
-    alert('City not found. Please try again.');
+    console.error('City lookup error:', e);
   }
 }
 
@@ -716,8 +716,7 @@ async function loadWeatherByCoords(lat, lon) {
     document.getElementById('search-input').value = '';
   } catch(e) {
     showLoading(false);
-    alert('Failed to load weather data. Check your API key.');
-    console.error(e);
+    console.error('Weather load error:', e);
   }
 }
 
