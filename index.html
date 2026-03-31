@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Atmosphere — Weather Intelligence</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Mono:wght@400;700&family=Syne:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -94,6 +95,34 @@
     cursor: pointer; transition: opacity 0.2s;
   }
   .search-bar button:hover { opacity: 0.85; }
+
+  .search-wrapper { position: relative; }
+
+  .city-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0; right: 0;
+    background: #0e1520;
+    border: 1px solid rgba(100,160,255,0.25);
+    border-radius: 14px;
+    overflow: hidden;
+    z-index: 200;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    animation: fadeUp 0.15s ease both;
+  }
+
+  .city-dropdown-item {
+    padding: 0.75rem 1.1rem;
+    cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 1rem;
+    transition: background 0.15s;
+    border-bottom: 1px solid rgba(100,160,255,0.07);
+  }
+  .city-dropdown-item:last-child { border-bottom: none; }
+  .city-dropdown-item:hover { background: rgba(77,159,255,0.1); }
+  .city-dropdown-item .cdi-name { font-size: 0.9rem; color: var(--text); }
+  .city-dropdown-item .cdi-region { font-size: 0.75rem; color: var(--text-dim); text-align: right; white-space: nowrap; }
 
   .header-right { display: flex; align-items: center; gap: 1rem; }
 
@@ -382,6 +411,52 @@
     main { padding: 1rem; }
   }
 
+  /* ── Radar map ── */
+  .radar-map-wrap {
+    position: relative;
+    width: 100%;
+    height: 420px;
+    border-radius: 14px;
+    overflow: hidden;
+    margin-top: 1rem;
+  }
+
+  #radar-map { width: 100%; height: 100%; background: var(--surface); }
+
+  .radar-layers {
+    display: flex; gap: 0.5rem; flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+
+  .layer-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text-dim);
+    padding: 0.35rem 0.9rem;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .layer-btn:hover { border-color: var(--accent); color: var(--text); }
+  .layer-btn.active { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+
+  /* Override Leaflet popup/attribution to match dark theme */
+  .leaflet-container { font-family: 'Syne', sans-serif; }
+  .leaflet-control-attribution {
+    background: rgba(8,12,18,0.75) !important;
+    color: var(--text-dim) !important;
+    font-size: 0.6rem !important;
+  }
+  .leaflet-control-attribution a { color: var(--accent) !important; }
+  .leaflet-control-zoom a {
+    background: var(--card) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+  .leaflet-control-zoom a:hover { background: var(--surface) !important; }
+
   .hidden { display: none !important; }
   .update-time { font-size: 0.7rem; color: var(--text-dim); font-family: 'Space Mono', monospace; }
 </style>
@@ -397,9 +472,12 @@
     <header>
       <div class="logo">Atmos<span>phere</span></div>
 
-      <div class="search-bar">
-        <input type="text" id="search-input" placeholder="Search city…" onkeydown="if(event.key==='Enter') searchCity()"/>
-        <button onclick="searchCity()">Go</button>
+      <div class="search-wrapper">
+        <div class="search-bar">
+          <input type="text" id="search-input" placeholder="Search city…" autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKey(event)"/>
+          <button onclick="searchCity()">Go</button>
+        </div>
+        <div class="city-dropdown hidden" id="city-dropdown"></div>
       </div>
 
       <div class="header-right">
@@ -502,7 +580,9 @@
         <!-- HOURLY FORECAST -->
         <div class="card chart-card fade-in" style="animation-delay:0.2s; margin-bottom:1.5rem;">
           <div class="card-label">24-Hour Temperature Trend</div>
-          <canvas id="temp-chart" height="140" style="margin-top:1rem;"></canvas>
+          <div style="position:relative; width:100%; height:160px; margin-top:1rem;">
+            <canvas id="temp-chart"></canvas>
+          </div>
         </div>
 
         <!-- HOURLY SCROLL -->
@@ -606,6 +686,21 @@
           </div>
         </div>
 
+        <!-- RADAR MAP -->
+        <div class="card fade-in" style="animation-delay:0.4s; margin-bottom:1.5rem;">
+          <div class="card-label">Radar & Weather Map</div>
+          <div class="radar-layers">
+            <button class="layer-btn active" onclick="setLayer('precipitation_new')">🌧 Precipitation</button>
+            <button class="layer-btn" onclick="setLayer('clouds_new')">☁️ Clouds</button>
+            <button class="layer-btn" onclick="setLayer('wind_new')">💨 Wind</button>
+            <button class="layer-btn" onclick="setLayer('temp_new')">🌡 Temperature</button>
+            <button class="layer-btn" onclick="setLayer('pressure_new')">📊 Pressure</button>
+          </div>
+          <div class="radar-map-wrap">
+            <div id="radar-map"></div>
+          </div>
+        </div>
+
       </div><!-- /weather-content -->
     </main>
   </div><!-- /dashboard -->
@@ -652,9 +747,43 @@ function showDashboard() {
 // ═══════════════════════════════════════════════
 //  SEARCH & LOCATION
 // ═══════════════════════════════════════════════
+let searchDebounce = null;
+
+function onSearchInput() {
+  const q = document.getElementById('search-input').value.trim();
+  clearTimeout(searchDebounce);
+  if (q.length < 2) { closeDropdown(); return; }
+  searchDebounce = setTimeout(() => fetchSuggestions(q), 350);
+}
+
+function onSearchKey(e) {
+  if (e.key === 'Escape') { closeDropdown(); return; }
+  if (e.key === 'Enter') {
+    const q = document.getElementById('search-input').value.trim();
+    if (q) { closeDropdown(); loadWeather(q); }
+  }
+}
+
+async function fetchSuggestions(q) {
+  try {
+    const geo = await fetch('https://api.openweathermap.org/geo/1.0/direct?q=' + encodeURIComponent(q) + '&limit=5&appid=' + API_KEY).then(r => r.json());
+    if (!geo.length) { closeDropdown(); return; }
+    // Deduplicate by name+state+country
+    const seen = new Set();
+    const unique = geo.filter(g => {
+      const key = g.name + '|' + (g.state || '') + '|' + g.country;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+    showDropdown(unique);
+  } catch(e) {
+    closeDropdown();
+  }
+}
+
 function searchCity() {
   const q = document.getElementById('search-input').value.trim();
-  if (q) loadWeather(q);
+  if (q) { closeDropdown(); loadWeather(q); }
 }
 
 function getLocation() {
@@ -668,7 +797,7 @@ function setUnits(u) {
   units = u;
   localStorage.setItem('atmos_units', u);
   updateUnitButtons();
-  if (currentLat) loadWeatherByCoords(currentLat, currentLon);
+  if (currentLat) loadWeatherByCoords(currentLat, currentLon, window._currentState);
 }
 
 function updateUnitButtons() {
@@ -682,20 +811,51 @@ function updateUnitButtons() {
 async function loadWeather(city) {
   showLoading(true);
   try {
-    // Step 1: get coords
-    const geo = await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${API_KEY}`).then(r => r.json());
+    const geo = await fetch('https://api.openweathermap.org/geo/1.0/direct?q=' + encodeURIComponent(city) + '&limit=1&appid=' + API_KEY).then(r => r.json());
     if (!geo.length) throw new Error('City not found');
-    const { lat, lon } = geo[0];
-    loadWeatherByCoords(lat, lon);
+    loadWeatherByCoords(geo[0].lat, geo[0].lon, geo[0].state || null);
   } catch(e) {
     showLoading(false);
     console.error('City lookup error:', e);
   }
 }
 
-async function loadWeatherByCoords(lat, lon) {
+function showDropdown(results) {
+  const dd = document.getElementById('city-dropdown');
+  dd.innerHTML = results.map((g, i) => {
+    const region = [g.state, g.country].filter(Boolean).join(', ');
+    return '<div class="city-dropdown-item" onclick="pickCity(' + i + ')">'
+      + '<span class="cdi-name">' + g.name + '</span>'
+      + '<span class="cdi-region">' + region + '</span>'
+      + '</div>';
+  }).join('');
+  dd.dataset.results = JSON.stringify(results);
+  dd.classList.remove('hidden');
+  setTimeout(() => document.addEventListener('click', outsideDropdownClick), 0);
+}
+
+function pickCity(index) {
+  const results = JSON.parse(document.getElementById('city-dropdown').dataset.results);
+  const g = results[index];
+  document.getElementById('search-input').value = '';
+  closeDropdown();
+  loadWeatherByCoords(g.lat, g.lon, g.state || null);
+}
+
+function closeDropdown() {
+  const dd = document.getElementById('city-dropdown');
+  if (dd) dd.classList.add('hidden');
+  document.removeEventListener('click', outsideDropdownClick);
+}
+
+function outsideDropdownClick(e) {
+  if (!e.target.closest('.search-wrapper')) closeDropdown();
+}
+
+async function loadWeatherByCoords(lat, lon, state) {
   showLoading(true);
   currentLat = lat; currentLon = lon;
+  window._currentState = state || null;
   const u = units;
 
   const safeFetch = url =>
@@ -709,9 +869,8 @@ async function loadWeatherByCoords(lat, lon) {
     safeFetch(base + '/data/3.0/onecall?lat=' + lat + '&lon=' + lon + '&units=' + u + '&exclude=minutely,alerts&appid=' + API_KEY),
   ]);
 
-  showLoading(false);
-
   if (!current || !forecast) {
+    showLoading(false);
     document.getElementById('weather-content').innerHTML =
       '<div class="state-overlay"><div class="state-msg" style="color:#f87171">Could not load weather data. Make sure your API key is active on OpenWeatherMap.</div></div>';
     document.getElementById('weather-content').classList.remove('hidden');
@@ -719,9 +878,20 @@ async function loadWeatherByCoords(lat, lon) {
     return;
   }
 
-  renderWeather(current, forecast, air, oneCall);
-  updateTimestamp();
-  document.getElementById('search-input').value = '';
+  try {
+    console.log('Rendering weather data:', current.name, current.main.temp);
+    renderWeather(current, forecast, air, oneCall);
+    updateRadarMap(lat, lon);
+    updateTimestamp();
+    document.getElementById('search-input').value = '';
+  } catch(e) {
+    console.error('Render error:', e);
+    document.getElementById('weather-content').innerHTML =
+      '<div class="state-overlay"><div class="state-msg" style="color:#f87171">Error rendering weather data: ' + e.message + '</div></div>';
+    document.getElementById('weather-content').classList.remove('hidden');
+  } finally {
+    showLoading(false);
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -733,10 +903,10 @@ function renderWeather(current, forecast, air, oneCall) {
 
   // ── Current ──
   document.getElementById('city-name').textContent = current.name;
-  document.getElementById('city-country').textContent = `${current.sys.country} · ${current.coord.lat.toFixed(2)}°, ${current.coord.lon.toFixed(2)}°`;
+  const stateStr = window._currentState ? window._currentState + ', ' : '';
+  document.getElementById('city-country').textContent = stateStr + current.sys.country + ' · ' + current.coord.lat.toFixed(2) + '°, ' + current.coord.lon.toFixed(2) + '°';
   document.getElementById('weather-desc').textContent = current.weather[0].description;
-  document.getElementById('temp-display').innerHTML = `${Math.round(current.main.temp)}<span class="unit-sym">${sym}</span>`;
-  document.getElementById('unit-sym').textContent = sym;
+  document.getElementById('temp-display').innerHTML = Math.round(current.main.temp) + '<span class="unit-sym" id="unit-sym">' + sym + '</span>';
   document.getElementById('weather-icon').textContent = WEATHER_ICONS[current.weather[0].icon] || '🌤️';
 
   document.getElementById('feels-like').textContent = `${Math.round(current.main.feels_like)}${sym}`;
@@ -985,6 +1155,62 @@ function showLoading(show) {
 
 function updateTimestamp() {
   document.getElementById('update-time').textContent = 'Updated ' + new Date().toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit'});
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════
+//  RADAR MAP
+// ═══════════════════════════════════════════════
+let radarMap = null;
+let owmLayer = null;
+let currentLayer = 'precipitation_new';
+
+function initRadarMap(lat, lon) {
+  if (!radarMap) {
+    radarMap = L.map('radar-map', {
+      center: [lat, lon],
+      zoom: 6,
+      zoomControl: true,
+    });
+
+    // Dark base tiles from CartoDB
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(radarMap);
+
+    addOwmLayer(currentLayer);
+  } else {
+    radarMap.setView([lat, lon], 6);
+  }
+}
+
+function addOwmLayer(layer) {
+  if (owmLayer) { radarMap.removeLayer(owmLayer); owmLayer = null; }
+  owmLayer = L.tileLayer(
+    'https://tile.openweathermap.org/map/' + layer + '/{z}/{x}/{y}.png?appid=' + API_KEY,
+    { opacity: 0.7, maxZoom: 19 }
+  ).addTo(radarMap);
+}
+
+function setLayer(layer) {
+  currentLayer = layer;
+  // Update active button
+  document.querySelectorAll('.layer-btn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('onclick').includes(layer));
+  });
+  if (radarMap) addOwmLayer(layer);
+}
+
+function updateRadarMap(lat, lon) {
+  // Leaflet must init after the map div is visible
+  setTimeout(() => {
+    initRadarMap(lat, lon);
+    // Force Leaflet to recalculate size in case it rendered while hidden
+    radarMap.invalidateSize();
+  }, 100);
 }
 </script>
 </body>
